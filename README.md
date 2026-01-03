@@ -44,7 +44,11 @@ pnpm docker:up
 # 4. Apply migrations
 pnpm db:migrate
 
-# 5. Create the first super admin
+# 5. Give the app its own non-owner database role
+#    (required: Row Level Security only binds a non-owner role)
+bash apps/api/scripts/setup-db-role.sh
+
+# 6. Create the first super admin and demo data
 pnpm db:seed
 ```
 
@@ -157,7 +161,20 @@ requesting `/t/acme` directly returns 404 so the hostname check cannot be bypass
 
 On the API side, the tenant is resolved once per request into `AsyncLocalStorage`
 (`apps/api/src/common/context/request-context.ts`) and applied automatically to
-queries. Postgres Row Level Security is the backstop. Both layers must be present.
+queries.
+
+**Two layers, both live.** The application injects a tenant filter into every
+query, and the app connects as `facecam_app`, a non-owner role that Postgres Row
+Level Security genuinely binds. Each tenant-scoped query runs in a transaction
+that sets `app.tenant_id`. Remove the application filter entirely and the
+database still refuses cross-tenant rows — `apps/api/test/rls-enforcement.e2e-spec.ts`
+proves it.
+
+Platform-level work (the super admin console) uses a **separate connection** as
+the owner, which Postgres exempts from row security. Escalating scope therefore
+means a different database connection with different privileges, not a boolean
+in application code. The API refuses to boot if `APP_DATABASE_URL` points at a
+role that can bypass row security.
 
 ## Storage
 
