@@ -132,9 +132,26 @@ export const memberCoreSchema = z.object({
 
 export type MemberCoreInput = z.infer<typeof memberCoreSchema>
 
-/** Full member payload: fixed columns plus the tenant's dynamic attributes. */
+/**
+ * Biometric consent, carried on the member payload.
+ *
+ * Declared here rather than imported from `./member` to keep this module free
+ * of cycles, since `member.ts` already imports from it.
+ *
+ * This must be part of the member schema, not validated separately: a plain
+ * `z.object` strips unknown keys, so a consent block sent alongside a member
+ * would be discarded before reaching the database. Silently losing the record
+ * of who agreed to biometric processing is the worst possible failure here.
+ */
+const memberConsentSchema = z.object({
+  granted: z.boolean(),
+  version: z.string().trim().min(1).max(32),
+})
+
+/** Full member payload: fixed columns, dynamic attributes, and consent. */
 export function buildMemberSchema(definitions: FieldDefinition[]) {
   return memberCoreSchema.extend({
     attributes: buildAttributesSchema(definitions),
+    consent: memberConsentSchema.optional(),
   })
 }
