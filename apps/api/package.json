@@ -19,6 +19,8 @@
     "test:db:setup": "bash scripts/prepare-test-db.sh"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1115.0",
+    "@aws-sdk/s3-request-presigner": "^3.1115.0",
     "@facecam/shared": "workspace:*",
     "@nestjs/common": "^10.4.15",
     "@nestjs/config": "^3.3.0",
@@ -43,6 +45,7 @@
     "@types/cookie-parser": "^1.4.10",
     "@types/express": "^5.0.0",
     "@types/jest": "^29.5.14",
+    "@types/multer": "^2.2.0",
     "@types/node": "^22.10.2",
     "@types/supertest": "^6.0.2",
     "dotenv": "^17.4.2",
