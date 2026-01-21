@@ -594,6 +594,110 @@ pnpm --filter @facecam/api test    # 2 unit tests
 
 ---
 
+# Interlude — Row Level Security now binds the application
+
+**Status:** complete · **Date:** 21 August 2026 · **Closes the top known gap from Phases 1 and 2**
+
+## Summary
+
+Since Phase 1 this project has claimed two layers of tenant isolation and
+actually had one. The Row Level Security policies existed and were enabled, but
+the application connected as the table owner, which Postgres exempts from its
+own policies. They protected every connection except the one that mattered.
+
+That is now fixed, and it needed no schema change. Phase 3 introduces biometric
+face templates, and adding those to a single-layer system was the wrong order of
+operations.
+
+## What changed
+
+- The application connects as **`facecam_app`**, a non-owner, non-superuser
+  role. Being neither, the existing policies apply to it directly.
+- Every tenant-scoped query runs inside a transaction that first sets
+  `app.tenant_id`, which the policies read.
+- The owner connection is kept for migrations, health checks, the `tenants`
+  table, and platform-level queries that must span every organization.
+- `PrismaService` exposes both: `prisma.db` (RLS-bound) and `prisma` (owner).
+- Three call sites that wrote tenant rows as the owner were rerouted.
+
+## The insight that made it simple
+
+`FORCE ROW LEVEL SECURITY` was never needed. FORCE exists only to subject a
+table's **owner** to its own policies. An ordinary role is already subject to
+them. So the fix was not a schema change at all: it was connecting as a
+different role.
+
+This also avoided the cost that made the change look expensive. The original
+plan assumed every query would need an interactive transaction. Using the array
+form of `$transaction` keeps the `set_config` and the query to a single round
+trip.
+
+## Decisions and why
+
+### Transaction-local, not session-level
+
+`set_config('app.tenant_id', $1, true)` — the `true` matters more than anything
+else here. Connections are pooled and shared between requests. A session-level
+value would persist on the connection after the request ended and leak one
+tenant's scope into whichever request picked that connection up next. There is a
+test for exactly this.
+
+### Platform escalation is a different connection, not a flag
+
+`asPlatform()` used to flip a boolean that the application checked. Now
+platform-level work uses a connection with different database privileges. A bug
+in application code cannot grant itself cross-tenant reads, because the
+connection it holds is not permitted them.
+
+Using `prisma.db` under `asPlatform()` now throws, rather than silently
+returning nothing, which would have been the most confusing possible failure.
+
+### The app refuses to start if its role is privileged
+
+If `APP_DATABASE_URL` ever points at a superuser or a `BYPASSRLS` role, row
+security is silently off while everything still appears to work. `PrismaService`
+checks `rolsuper OR rolbypassrls` at boot and refuses to start, naming the fix.
+Verified by pointing it at the owner URL: the process exits 1 with that message.
+
+### The password is not in a migration
+
+`apps/api/scripts/setup-db-role.sh` grants LOGIN and sets the password from the
+environment. The migration only re-asserts grants, so no credential is committed.
+
+## How it is proved
+
+`apps/api/test/rls-enforcement.e2e-spec.ts` bypasses the Prisma extension
+entirely and talks to the database as the application's own role — the situation
+you would be in if the extension had a bug or was removed. Nine tests assert:
+
+- the role cannot bypass row security (without this the rest prove nothing)
+- with no tenant set, an unfiltered `findMany` returns **nothing**
+- with a tenant set, only that tenant's rows come back, with no filter in the query
+- another tenant's row is invisible even when requested by primary key
+- cross-tenant insert is refused, update affects 0 rows, delete affects 0 rows
+- scope does not leak between transactions on a pooled connection
+- all six tenant-owned tables have row security enabled
+
+Also verified by hand at the psql level: the owner sees 12 members, the app role
+with no tenant set sees 0, and a cross-tenant insert fails with
+`new row violates row-level security policy`.
+
+## Verify
+
+```bash
+bash apps/api/scripts/setup-db-role.sh   # idempotent
+pnpm test:e2e                            # 42 tests
+```
+
+## What this does not cover
+
+Raw SQL written in future phases still has to go through `prisma.db` or
+`withTenantTx` to get the session variable set. A raw query on the owner
+connection bypasses row security by design, which is why the owner client is
+reserved for platform work and health checks.
+
+---
+
 <!--
 Template for the next entry. Copy, fill in, delete this comment.
 
