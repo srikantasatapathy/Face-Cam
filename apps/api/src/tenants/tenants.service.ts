@@ -16,6 +16,7 @@ import type { Paginated } from '@facecam/shared'
 import type { Prisma, Tenant, TenantBranding } from '@prisma/client'
 import { AuthService } from '../auth/auth.service'
 import { RequestContext } from '../common/context/request-context'
+import { FieldDefinitionsService } from '../members/field-definitions.service'
 import { PrismaService } from '../prisma/prisma.service'
 
 @Injectable()
@@ -62,6 +63,13 @@ export class TenantsService {
             fullName: input.adminFullName,
             role: UserRole.ORG_ADMIN,
           },
+        })
+
+        // Seed the member fields for this vertical. Inside the same transaction
+        // because a tenant whose field set half-loaded would render a broken
+        // enrolment form with no obvious cause.
+        await tx.memberFieldDefinition.createMany({
+          data: FieldDefinitionsService.seedData(created.id, input.template),
         })
 
         return created
