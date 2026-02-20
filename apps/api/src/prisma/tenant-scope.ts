@@ -28,6 +28,8 @@ export const TENANT_SCOPED_MODELS: Record<string, string> = {
   TenantSettings: 'tenantId',
   User: 'tenantId',
   AuditLog: 'tenantId',
+  Member: 'tenantId',
+  MemberFieldDefinition: 'tenantId',
 }
 
 /** Operations whose `where` clause identifies the rows being read or changed. */
