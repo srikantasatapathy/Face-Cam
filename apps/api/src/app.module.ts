@@ -10,11 +10,12 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor'
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware'
 import { AppConfigModule } from './config/config.module'
 import { HealthModule } from './health/health.module'
+import { MembersModule } from './members/members.module'
 import { PrismaModule } from './prisma/prisma.module'
 import { TenantsModule } from './tenants/tenants.module'
 
 @Module({
-  imports: [AppConfigModule, PrismaModule, AuthModule, HealthModule, TenantsModule],
+  imports: [AppConfigModule, PrismaModule, AuthModule, HealthModule, TenantsModule, MembersModule],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
     { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
