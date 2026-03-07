@@ -11,6 +11,7 @@
  *   pnpm db:seed
  *   SEED_DEMO=false pnpm db:seed     # super admin only
  */
+import { fieldsForTemplate } from '@facecam/shared'
 import { PrismaClient, type Prisma } from '@prisma/client'
 import * as argon2 from 'argon2'
 
@@ -32,6 +33,13 @@ interface DemoOrg {
   status: 'trial' | 'active'
   timezone: string
   admin: { email: string; password: string; fullName: string }
+  /** A handful of members so both portals have something to show. */
+  members: Array<{
+    code: string
+    fullName: string
+    email?: string
+    attributes: Record<string, string>
+  }>
 }
 
 /**
@@ -50,6 +58,29 @@ const DEMO_ORGS: DemoOrg[] = [
       password: 'SchoolAdmin!2026',
       fullName: 'Anita Rao',
     },
+    members: [
+      {
+        code: 'S-1001',
+        fullName: 'Meera Krishnan',
+        email: 'meera@stxavier.edu',
+        attributes: { class: '10', section: 'B', bloodGroup: 'O+', gender: 'Female' },
+      },
+      {
+        code: 'S-1002',
+        fullName: 'Arjun Nair',
+        attributes: { class: '10', section: 'A', bloodGroup: 'B+', gender: 'Male' },
+      },
+      {
+        code: 'S-1003',
+        fullName: 'Priya Menon',
+        attributes: { class: '9', section: 'A', bloodGroup: 'A-', gender: 'Female' },
+      },
+      {
+        code: 'S-1004',
+        fullName: 'Rohan Das',
+        attributes: { class: '9', section: 'C', bloodGroup: 'AB+', gender: 'Male' },
+      },
+    ],
   },
   {
     name: 'Acme Industries',
@@ -62,6 +93,40 @@ const DEMO_ORGS: DemoOrg[] = [
       password: 'CorpAdmin!2026',
       fullName: 'Ravi Kumar',
     },
+    members: [
+      {
+        code: 'EMP-2001',
+        fullName: 'Sunita Iyer',
+        email: 'sunita@acme.com',
+        attributes: {
+          department: 'Engineering',
+          designation: 'Senior Engineer',
+          employmentType: 'Full-time',
+          gender: 'Female',
+        },
+      },
+      {
+        code: 'EMP-2002',
+        fullName: 'Vikram Shah',
+        email: 'vikram@acme.com',
+        attributes: {
+          department: 'Engineering',
+          designation: 'Team Lead',
+          employmentType: 'Full-time',
+          gender: 'Male',
+        },
+      },
+      {
+        code: 'EMP-2003',
+        fullName: 'Fatima Sheikh',
+        attributes: {
+          department: 'Operations',
+          designation: 'Shift Supervisor',
+          employmentType: 'Full-time',
+          gender: 'Female',
+        },
+      },
+    ],
   },
 ]
 
@@ -146,7 +211,79 @@ async function seedOrg(org: DemoOrg): Promise<void> {
     },
   })
 
-  console.log(`  ready    ${org.template.padEnd(10)} ${org.slug}  (${org.admin.email})`)
+  await seedFieldDefinitions(tenant.id, org.template)
+
+  // Members are created only when missing, and never overwritten: a demo
+  // record someone edited while testing stays as they left it.
+  for (const member of org.members) {
+    const exists = await prisma.member.findFirst({
+      where: { tenantId: tenant.id, code: member.code },
+      select: { id: true },
+    })
+    if (exists) continue
+
+    await prisma.member.create({
+      data: {
+        tenantId: tenant.id,
+        code: member.code,
+        fullName: member.fullName,
+        email: member.email ?? null,
+        attributes: member.attributes,
+      },
+    })
+  }
+
+  console.log(
+    `  ready    ${org.template.padEnd(10)} ${org.slug}  ` +
+      `(${org.admin.email}, ${org.members.length} members)`,
+  )
+}
+
+/**
+ * Gives a tenant the field set for its template, skipping keys it already has.
+ *
+ * Also repairs tenants created before field seeding existed. Existing rows are
+ * never overwritten: an organization that renamed a label or changed a required
+ * flag keeps its choices.
+ */
+async function seedFieldDefinitions(tenantId: string, template: string): Promise<number> {
+  const existing = await prisma.memberFieldDefinition.findMany({
+    where: { tenantId },
+    select: { key: true },
+  })
+  const have = new Set(existing.map((row) => row.key))
+
+  const missing = fieldsForTemplate(template)
+    .filter((field) => !have.has(field.key))
+    .map((field) => ({
+      tenantId,
+      key: field.key,
+      label: field.label,
+      type: field.type,
+      required: field.required,
+      options: field.options ?? [],
+      group: field.group ?? null,
+      sortOrder: field.sortOrder,
+      helpText: field.helpText ?? null,
+      maxLength: field.maxLength ?? null,
+      min: field.min ?? null,
+      max: field.max ?? null,
+    })) as Prisma.MemberFieldDefinitionCreateManyInput[]
+
+  if (missing.length > 0) {
+    await prisma.memberFieldDefinition.createMany({ data: missing })
+  }
+  return missing.length
+}
+
+/** Repairs any tenant that has no field definitions, including non-demo ones. */
+async function backfillFieldDefinitions(): Promise<void> {
+  const tenants = await prisma.tenant.findMany({ select: { id: true, slug: true, template: true } })
+
+  for (const tenant of tenants) {
+    const added = await seedFieldDefinitions(tenant.id, tenant.template)
+    if (added > 0) console.log(`  backfill ${tenant.slug}: added ${added} field definitions`)
+  }
 }
 
 async function main(): Promise<void> {
@@ -159,6 +296,8 @@ async function main(): Promise<void> {
   } else {
     console.log('  skipped  demo organizations')
   }
+
+  await backfillFieldDefinitions()
 
   const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'localhost:3100'
 
