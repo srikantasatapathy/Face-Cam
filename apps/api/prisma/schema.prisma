@@ -86,10 +86,12 @@ model Tenant {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  branding  TenantBranding?
-  settings  TenantSettings?
-  users     User[]
-  auditLogs AuditLog[]
+  branding         TenantBranding?
+  settings         TenantSettings?
+  users            User[]
+  auditLogs        AuditLog[]
+  members          Member[]
+  fieldDefinitions MemberFieldDefinition[]
 
   @@index([status])
   @@index([validUntil])
@@ -204,4 +206,106 @@ model AuditLog {
   @@index([tenantId, createdAt])
   @@index([entity, entityId])
   @@map("audit_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Members
+// ---------------------------------------------------------------------------
+
+enum MemberStatus {
+  active
+  inactive
+  archived
+
+  @@map("member_status")
+}
+
+enum FieldType {
+  text
+  number
+  date
+  select
+  email
+  phone
+  boolean
+
+  @@map("field_type")
+}
+
+/// A student or an employee. One table for both verticals: the fixed columns
+/// are what the platform itself needs, and everything vertical-specific lives
+/// in `attributes`, described by this tenant's MemberFieldDefinition rows.
+model Member {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  /// Roll number or employee code. Unique within the tenant, and the identifier
+  /// staff actually know, so it doubles as the PIN-fallback lookup key.
+  code     String       @db.VarChar(64)
+  fullName String       @map("full_name") @db.VarChar(200)
+  email    String?      @db.VarChar(255)
+  phone    String?      @db.VarChar(32)
+  status   MemberStatus @default(active)
+
+  /// Tenant-defined fields, validated at write time against the schema built
+  /// from this tenant's field definitions.
+  attributes Json @default("{}") @db.JsonB
+
+  /// Biometric consent. Required before any face may be enrolled, and kept as a
+  /// record of who agreed to what, not merely that someone did.
+  /// See PROJECT_DESCRIPTION.md section 12.
+  consentAt         DateTime? @map("consent_at") @db.Timestamptz(6)
+  consentVersion    String?   @map("consent_version") @db.VarChar(32)
+  consentRecordedBy String?   @map("consent_recorded_by") @db.Uuid
+
+  /// Set once faces are enrolled in Phase 3.
+  faceEnrolledAt DateTime? @map("face_enrolled_at") @db.Timestamptz(6)
+
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// Soft delete. Attendance history must survive a member leaving, so rows are
+  /// archived rather than removed.
+  archivedAt DateTime? @map("archived_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, code])
+  @@index([tenantId, status])
+  @@index([tenantId, fullName])
+  @@map("members")
+}
+
+/// Describes one tenant-configurable member field. Seeded from the template at
+/// tenant creation, then owned by the organization.
+model MemberFieldDefinition {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  /// The key inside `Member.attributes`. Immutable once created: renaming it
+  /// would orphan the value on every existing member.
+  key   String    @db.VarChar(64)
+  label String    @db.VarChar(100)
+  type  FieldType
+
+  required  Boolean  @default(false)
+  /// Choices for `select`. Empty for every other type.
+  options   String[] @default([])
+  group     String?  @db.VarChar(64)
+  sortOrder Int      @default(0) @map("sort_order")
+  helpText  String?  @map("help_text") @db.VarChar(200)
+
+  maxLength Int? @map("max_length")
+  min       Int?
+  max       Int?
+
+  /// Archived rather than deleted, so values already stored under this key are
+  /// not silently stripped from existing members.
+  archivedAt DateTime? @map("archived_at") @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, key])
+  @@index([tenantId, sortOrder])
+  @@map("member_field_definitions")
 }
