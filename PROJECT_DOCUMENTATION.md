@@ -442,6 +442,158 @@ appears in tests and background jobs. Await inside the scope.
 
 ---
 
+# Phase 2 — Members and dynamic fields
+
+**Status:** complete · **Date:** 19 August 2026
+
+## Summary
+
+Organizations can now enrol the people they take attendance for. The shape of a
+member record is defined per tenant: a school gets roll number, class and
+guardian phone; a company gets employee code, department and designation. Both
+come from the same code, driven by rows in the database.
+
+The system is proved by the same page rendering different columns for the two
+demo organizations, and by tests asserting that changing a field definition
+never damages member records that were valid when they were written.
+
+## What was built
+
+### Backend
+
+- **`members`** with fixed platform columns plus an `attributes` JSONB column,
+  unique `(tenant_id, code)`, and soft delete.
+- **`member_field_definitions`** describing each tenant's fields, seeded from
+  the template at tenant creation and owned by the organization thereafter.
+- **Runtime validation**: the Zod schema is rebuilt from the current
+  definitions on every write, so an admin who adds a required field sees it
+  enforced on the very next save.
+- **Field CRUD**: add, edit, reorder, toggle required, archive, restore.
+- **CSV import** with column mapping, dry-run validation and row-level errors.
+- **CSV export** with a UTF-8 BOM.
+- **Consent capture** on the member record.
+- Both new models registered in `TENANT_SCOPED_MODELS`, with RLS policies.
+
+### Frontend
+
+- Member list with search, dynamic-attribute filter and pagination.
+- A dynamic form renderer covering every field type.
+- Create, view, edit, archive and restore.
+- Field definition manager.
+- Three-step CSV import wizard with in-browser parsing and an error table.
+- Portal navigation shell.
+- Refresh-token retry, carried over from Phase 1.
+
+## Key files
+
+| File                                                         | Purpose                                          |
+| ------------------------------------------------------------ | ------------------------------------------------ |
+| `packages/shared/src/field-schema.ts`                        | Generates the member Zod schema from definitions |
+| `packages/shared/src/member.ts`                              | Member and field DTOs, import contracts          |
+| `apps/api/src/members/field-definitions.service.ts`          | Field lifecycle and schema building              |
+| `apps/api/src/members/members.service.ts`                    | Member CRUD and consent                          |
+| `apps/api/src/members/member-import.service.ts`              | Dry run, validation, atomic commit               |
+| `apps/api/test/tenant-scope-coverage.spec.ts`                | Fails the build on an unregistered model         |
+| `apps/web/src/components/members/dynamic-field.tsx`          | Renders one tenant-defined field                 |
+| `apps/web/src/app/t/[slug]/members/import/import-wizard.tsx` | CSV wizard and parser                            |
+
+## Decisions and why
+
+### Fields are archived, never deleted
+
+Archiving removes a field from forms and from validation, but leaves every value
+already stored under its key untouched. Restoring it brings that data back into
+view rather than an empty column. Hard deletion would silently destroy work an
+organization spent hours entering. Reusing an archived key is refused, because
+the old values would reappear under a field that may now mean something else.
+
+### Key and type are immutable
+
+Renaming a key orphans the value stored under it on every existing member.
+Changing a type invalidates values that were valid when written. Both require
+creating a new field and migrating deliberately.
+
+### Adding a required field does not break existing members
+
+Existing records predate the field and simply lack it. Reads keep working; the
+requirement applies to the next write. The alternative, validating on read,
+would make an organization's entire roll unreadable the moment someone ticked a
+box. Two tests pin this.
+
+### CSV import is a dry run by default, and commits all-or-nothing
+
+An admin uploading 800 students gets a complete error report before anything is
+written, rather than discovering row 412 was malformed after 411 rows landed.
+On a real run, if any row fails, nothing is written: a partial import leaves an
+organization unable to tell which rows made it, and re-uploading then trips
+duplicate-code errors on the half that succeeded.
+
+Row numbers count the header as row 1, so they match what the spreadsheet shows.
+
+### Import never grants biometric consent
+
+A spreadsheet cannot record that a person agreed to biometric processing.
+Imported members exist and can be marked present manually, but cannot be
+face-enrolled until consent is captured for them individually. Tested.
+
+### Members are archived, not deleted
+
+Attendance history refers to members. Deleting the row would leave a report for
+an earlier month unable to name who was present.
+
+### A guard test protects the scoping registry
+
+The Prisma extension only protects models listed in `TENANT_SCOPED_MODELS`. A
+new model with a `tenantId` that nobody remembers to register would be queried
+completely unscoped. A test reads the generated Prisma metadata and fails the
+build in that case. It was verified to fail by temporarily unregistering a
+model, so it is not passing vacuously.
+
+### Search uses trigram indexes
+
+Case-insensitive `contains` cannot use a btree index. `pg_trgm` makes name and
+code search an index scan, which matters at a few thousand students per tenant.
+Attribute filtering uses a GIN index with `jsonb_path_ops`, sized for the
+containment queries that are the only ones used.
+
+### A bug worth recording
+
+Consent was being silently discarded. `memberCoreSchema` is a plain `z.object`,
+which strips unknown keys, so the consent block was dropped before reaching the
+service and every member was stored with no consent record. Caught by checking
+the response rather than assuming the write succeeded. Consent is now part of
+the generated member schema.
+
+## How to verify
+
+```bash
+pnpm db:seed          # two organizations, seven members between them
+pnpm dev
+```
+
+Sign in at `http://st-xavier-high-school.localhost:3100/login` and at
+`http://acme-industries.localhost:3100/login`, then compare the member list on
+each. The school shows Roll Number, Class and Section; the company shows
+Employee Code, Department and Designation. Same page, same code.
+
+```bash
+pnpm test:e2e                      # 33 tests
+pnpm --filter @facecam/api test    # 2 unit tests
+```
+
+## Known gaps
+
+| Gap                                               | Notes                                                                                                            |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| **RLS still does not constrain the application**  | Unchanged from Phase 1, and now covering two more tables. Still the highest-priority item before a real customer |
+| No photo on the member record                     | Enrolment photos arrive with the face engine in Phase 3                                                          |
+| Import cannot update existing members from the UI | The API supports `updateExisting`; the wizard does not expose it yet                                             |
+| No bulk actions on the member list                | Archiving is one at a time                                                                                       |
+| Consent cannot be withdrawn through the UI        | The data model records it; there is no endpoint yet, which matters for a deletion request                        |
+| shadcn/ui still not installed                     | Hand-rolled primitives continue to cover the forms                                                               |
+
+---
+
 <!--
 Template for the next entry. Copy, fill in, delete this comment.
 

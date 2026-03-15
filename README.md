@@ -61,7 +61,10 @@ from working again.
 | `ravi@acme.com`       | `CorpAdmin!2026`   | http://acme-industries.localhost:3100/login       |
 
 The two organizations are demo data covering both templates: St Xavier is an
-`education` tenant in `active` status, Acme is a `corporate` tenant still in `trial`.
+`education` tenant in `active` status with 4 students, Acme is a `corporate` tenant
+still in `trial` with 3 employees. Each gets the field set for its vertical, so the
+same member list renders Roll Number / Class / Section for the school and Employee
+Code / Department / Designation for the company.
 
 **Portal credentials only work on their own portal.** They are rejected at the apex
 domain and at any other organization, by design. See PROJECT_DOCUMENTATION.md, Phase 1.
