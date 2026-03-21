@@ -48,9 +48,27 @@ pnpm db:migrate
 pnpm db:seed
 ```
 
-Default seed credentials are `admin@facecam.local` / `ChangeMeNow!2026`. Override with
-`SEED_SUPER_ADMIN_EMAIL` and `SEED_SUPER_ADMIN_PASSWORD`, and change them before any
-deployment.
+### Seeded accounts
+
+`pnpm db:seed` is safe to re-run: it updates existing records rather than duplicating
+them, and resets passwords, so a locked-out demo account is always one command away
+from working again.
+
+| Account               | Password           | Sign in at                                        |
+| --------------------- | ------------------ | ------------------------------------------------- |
+| `admin@facecam.local` | `ChangeMeNow!2026` | http://localhost:3100/login                       |
+| `anita@stxavier.edu`  | `SchoolAdmin!2026` | http://st-xavier-high-school.localhost:3100/login |
+| `ravi@acme.com`       | `CorpAdmin!2026`   | http://acme-industries.localhost:3100/login       |
+
+The two organizations are demo data covering both templates: St Xavier is an
+`education` tenant in `active` status, Acme is a `corporate` tenant still in `trial`.
+
+**Portal credentials only work on their own portal.** They are rejected at the apex
+domain and at any other organization, by design. See PROJECT_DOCUMENTATION.md, Phase 1.
+
+Demo organizations are skipped when `NODE_ENV=production`, and can be skipped anywhere
+with `SEED_DEMO=false`. Override the super admin with `SEED_SUPER_ADMIN_EMAIL` and
+`SEED_SUPER_ADMIN_PASSWORD`, and change it before any deployment.
 
 ## Running day to day
 
@@ -109,16 +127,24 @@ To sign out, call `POST /api/auth/logout` or clear cookies for `localhost:4000`.
 
 ## Scripts
 
-| Command                          | What it does                        |
-| -------------------------------- | ----------------------------------- |
-| `pnpm dev`                       | Run api and web together            |
-| `pnpm build`                     | Build shared, then both apps        |
-| `pnpm typecheck`                 | Typecheck every package             |
-| `pnpm lint`                      | Lint every package                  |
-| `pnpm format`                    | Prettier over the repo              |
-| `pnpm db:migrate`                | Create and apply a Prisma migration |
-| `pnpm db:studio`                 | Prisma Studio                       |
-| `pnpm docker:up` / `docker:down` | Start / stop supporting services    |
+| Command                          | What it does                                                |
+| -------------------------------- | ----------------------------------------------------------- |
+| `pnpm dev`                       | Build shared, then run api and web together                 |
+| `pnpm dev:api` / `dev:web`       | Run one side only                                           |
+| `pnpm build`                     | Build shared, then both apps                                |
+| `pnpm build:shared`              | Build the shared package on its own                         |
+| `pnpm typecheck`                 | Typecheck every package                                     |
+| `pnpm lint`                      | Lint every package                                          |
+| `pnpm format`                    | Prettier over the repo                                      |
+| `pnpm test:e2e`                  | Isolation and suspension tests (prepares the test DB first) |
+| `pnpm test:db:setup`             | Create and migrate `facecam_test_db` on its own             |
+| `pnpm db:migrate`                | Create and apply a Prisma migration                         |
+| `pnpm db:deploy`                 | Apply pending migrations without generating one             |
+| `pnpm db:seed`                   | Create or reset the super admin and demo organizations      |
+| `pnpm db:studio`                 | Prisma Studio                                               |
+| `pnpm db:generate`               | Regenerate the Prisma client                                |
+| `pnpm docker:up` / `docker:down` | Start / stop supporting services                            |
+| `pnpm docker:logs` / `docker:ps` | Follow logs / show service status                           |
 
 ## How multi-tenancy works
 
