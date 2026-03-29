@@ -8,8 +8,14 @@
 -- sessions, reporting credentials, and anything else that reaches this database
 -- outside the application.
 --
--- WHAT THIS DOES NOT DO YET
--- -------------------------
+-- SUPERSEDED
+-- ----------
+-- The gap described below was closed on 21 August 2026. See the
+-- 20260821060000_rls_binds_application migration. The text is kept for the
+-- record of why the policies were written this way.
+--
+-- WHAT THIS DID NOT DO AT THE TIME
+-- --------------------------------
 -- Postgres exempts a table's OWNER from its own policies unless FORCE ROW LEVEL
 -- SECURITY is set. The application currently connects as the owner, so these
 -- policies do NOT constrain the application itself. Application-side isolation
