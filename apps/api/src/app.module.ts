@@ -9,13 +9,24 @@ import { TenantStatusGuard } from './common/guards/tenant-status.guard'
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor'
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware'
 import { AppConfigModule } from './config/config.module'
+import { FaceModule } from './face/face.module'
 import { HealthModule } from './health/health.module'
 import { MembersModule } from './members/members.module'
 import { PrismaModule } from './prisma/prisma.module'
+import { StorageModule } from './storage/storage.module'
 import { TenantsModule } from './tenants/tenants.module'
 
 @Module({
-  imports: [AppConfigModule, PrismaModule, AuthModule, HealthModule, TenantsModule, MembersModule],
+  imports: [
+    AppConfigModule,
+    PrismaModule,
+    StorageModule,
+    AuthModule,
+    HealthModule,
+    TenantsModule,
+    MembersModule,
+    FaceModule,
+  ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
     { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
