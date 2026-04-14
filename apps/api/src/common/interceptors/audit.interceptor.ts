@@ -50,10 +50,15 @@ export class AuditInterceptor implements NestInterceptor {
           ? String((result as { id: unknown }).id)
           : normaliseHeader(request.params?.id)
 
-      await RequestContext.asPlatform(() =>
-        this.prisma.auditLog.create({
+      const tenantId = RequestContext.tenantId ?? null
+
+      // Tenant actions are written through the RLS-bound client so the audit
+      // trail is subject to the same isolation as the data it describes.
+      // Platform actions have no tenant and can only be written by the owner.
+      const write = (client: { auditLog: { create: (args: unknown) => Promise<unknown> } }) =>
+        client.auditLog.create({
           data: {
-            tenantId: RequestContext.tenantId ?? null,
+            tenantId,
             actorUserId: RequestContext.userId ?? null,
             action: spec.action,
             entity: spec.entity,
@@ -65,8 +70,13 @@ export class AuditInterceptor implements NestInterceptor {
             userAgent: normaliseHeader(request.headers['user-agent']),
             correlationId: RequestContext.correlationId,
           },
-        }),
-      )
+        })
+
+      if (tenantId) {
+        await write(this.prisma.db as never)
+      } else {
+        await RequestContext.asPlatform(() => write(this.prisma as never))
+      }
     } catch (error) {
       this.logger.error(
         `Failed to write audit log for ${spec.action}`,
