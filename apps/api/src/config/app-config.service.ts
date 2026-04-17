@@ -40,8 +40,18 @@ export class AppConfigService {
     return this.get('ROOT_DOMAIN')
   }
 
+  /** Owner connection: migrations, health checks, platform-level queries. */
   get databaseUrl(): string {
     return this.get('DATABASE_URL')
+  }
+
+  /**
+   * Application connection, as a non-owner role that Row Level Security binds.
+   * Falls back to the owner URL only so a partly-configured dev machine still
+   * boots; PrismaService then refuses to start and says why.
+   */
+  get appDatabaseUrl(): string {
+    return this.get('APP_DATABASE_URL') || this.get('DATABASE_URL')
   }
 
   get auth() {
@@ -68,6 +78,7 @@ export class AppConfigService {
         bucket: this.get('AWS_S3_BUCKET'),
         accessKeyId: this.get('AWS_ACCESS_KEY_ID'),
         secretAccessKey: this.get('AWS_SECRET_ACCESS_KEY'),
+        endpoint: this.get('AWS_S3_ENDPOINT'),
       },
     }
   }
@@ -75,8 +86,16 @@ export class AppConfigService {
   get compreface() {
     return {
       url: this.get('COMPREFACE_URL'),
-      adminApiKey: this.get('COMPREFACE_ADMIN_API_KEY'),
+      adminEmail: this.get('COMPREFACE_ADMIN_EMAIL'),
+      adminPassword: this.get('COMPREFACE_ADMIN_PASSWORD'),
+      clientId: this.get('COMPREFACE_CLIENT_ID'),
+      clientSecret: this.get('COMPREFACE_CLIENT_SECRET'),
     }
+  }
+
+  /** True once admin credentials are present, so provisioning can run. */
+  get comprefaceAdminConfigured(): boolean {
+    return Boolean(this.compreface.adminEmail && this.compreface.adminPassword)
   }
 
   get antiSpoof() {
