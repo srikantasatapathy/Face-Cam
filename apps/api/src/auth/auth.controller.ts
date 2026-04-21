@@ -1,5 +1,5 @@
 import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common'
-import { ApiOperation, ApiTags } from '@nestjs/swagger'
+import { ApiCookieAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger'
 import {
   AUTH_COOKIE,
   UserRole,
@@ -13,6 +13,7 @@ import type { CookieOptions, Request, Response } from 'express'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { Public } from '../common/decorators/public.decorator'
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe'
+import { ApiZodBody } from '../common/swagger/zod-openapi'
 import { AppConfigService } from '../config/app-config.service'
 import { AuthService } from './auth.service'
 import { TokenService } from './token.service'
@@ -29,7 +30,16 @@ export class AuthController {
   @Public()
   @Post('login')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Sign in to a tenant portal or the platform console' })
+  @ApiOperation({
+    summary: 'Sign in to a tenant portal or the platform console',
+    description:
+      'Send `tenantSlug` to sign in to an organization portal, or omit it for the platform ' +
+      'console. Credentials are confined to one portal: an organization administrator cannot ' +
+      'sign in elsewhere. Sets httpOnly access and refresh cookies.',
+  })
+  @ApiZodBody(loginSchema)
+  @ApiResponse({ status: 200, description: 'Signed in; auth cookies set' })
+  @ApiResponse({ status: 401, description: 'Wrong credentials, unknown portal, or locked account' })
   async login(
     @Body(new ZodValidationPipe(loginSchema)) body: LoginInput,
     @Res({ passthrough: true }) res: Response,
@@ -44,7 +54,11 @@ export class AuthController {
   @Public()
   @Post('refresh')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Exchange the refresh cookie for a new token pair' })
+  @ApiOperation({
+    summary: 'Exchange the refresh cookie for a new token pair',
+    description: 'Reads the `fc_rt` cookie. Fails if the user token version has been bumped.',
+  })
+  @ApiResponse({ status: 401, description: 'Refresh token missing, expired or revoked' })
   async refresh(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
@@ -77,7 +91,9 @@ export class AuthController {
   }
 
   @Get('me')
+  @ApiCookieAuth('fc_at')
   @ApiOperation({ summary: 'The signed-in user' })
+  @ApiResponse({ status: 401, description: 'Not signed in' })
   async me(@CurrentUser() claims: AccessTokenClaims): Promise<SessionUser | null> {
     return this.auth.currentUser(claims.sub)
   }
