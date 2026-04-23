@@ -47,17 +47,60 @@ async function bootstrap(): Promise<void> {
   // ZodValidationPipe, because member schemas are generated at runtime from
   // each tenant's field definitions. See common/pipes/zod-validation.pipe.ts.
 
+  // Never exposed in production: the spec is a map of every endpoint, and this
+  // API handles biometric data.
   if (!config.isProduction) {
     const document = SwaggerModule.createDocument(
       app,
       new DocumentBuilder()
         .setTitle('Face-Cam API')
-        .setDescription('Multi-tenant face recognition attendance platform')
+        .setDescription(
+          [
+            'Multi-tenant face recognition attendance platform.',
+            '',
+            '### Signing in',
+            'Call `POST /api/auth/login`. Auth travels as httpOnly cookies, which Swagger UI',
+            'sends automatically once you have logged in, so there is no token to paste.',
+            '',
+            '- Platform console: omit `tenantSlug`.',
+            '- Organization portal: send the `tenantSlug`.',
+            '',
+            'Credentials are confined to one portal. An organization administrator cannot sign',
+            'in to another organization or to the platform console.',
+            '',
+            '### Tenant scoping',
+            'The tenant is taken from the signed token, never from the hostname or a header.',
+            'Rows belonging to another organization read as "not found" rather than',
+            '"forbidden", because a 403 would confirm the record exists.',
+            '',
+            '### Request schemas',
+            'Generated from the same Zod schemas that perform validation, so the documentation',
+            'cannot drift from the rules actually enforced.',
+          ].join('\n'),
+        )
         .setVersion('0.1.0')
-        .addBearerAuth()
+        .addCookieAuth('fc_at', { type: 'apiKey', in: 'cookie', name: 'fc_at' })
+        .addBearerAuth({ type: 'http', scheme: 'bearer' })
+        .addTag('auth', 'Sign in, refresh, sign out')
+        .addTag('admin/tenants', 'Platform console. Super admin only.')
+        .addTag('public', 'Unauthenticated endpoints')
+        .addTag('health', 'Dependency health')
         .build(),
     )
-    SwaggerModule.setup('api/docs', app, document)
+
+    SwaggerModule.setup('api/docs', app, document, {
+      customSiteTitle: 'Face-Cam API',
+      swaggerOptions: {
+        // Send cookies with try-it-out requests, otherwise every authenticated
+        // call from the UI returns 401.
+        withCredentials: true,
+        persistAuthorization: true,
+        docExpansion: 'list',
+        tagsSorter: 'alpha',
+        operationsSorter: 'alpha',
+      },
+    })
+
     logger.log(`Swagger UI at http://localhost:${config.apiPort}/api/docs`)
   }
 
