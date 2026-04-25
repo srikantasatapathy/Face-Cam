@@ -25,7 +25,7 @@ Managed as a pnpm workspace.
 - Docker with Compose
 - A PostgreSQL instance with the `vector` and `pgcrypto` extensions available
 
-## Setup
+## First-time setup
 
 ```bash
 # 1. Install dependencies
@@ -41,30 +41,71 @@ cp .env.example .env
 # 3. Start CompreFace, its database, and the anti-spoof service
 pnpm docker:up
 
-# 4. Build the shared package (api and web both import it)
-pnpm --filter @facecam/shared build
-
-# 5. Apply migrations
+# 4. Apply migrations
 pnpm db:migrate
 
-# 6. Create the first super admin
+# 5. Create the first super admin
 pnpm db:seed
-
-# 7. Run both apps
-pnpm dev
 ```
 
-Default seed credentials are `admin@facecam.local` / `ChangeMeNow!2026`.
-Override with `SEED_SUPER_ADMIN_EMAIL` and `SEED_SUPER_ADMIN_PASSWORD`, and
-change them before any deployment.
+Default seed credentials are `admin@facecam.local` / `ChangeMeNow!2026`. Override with
+`SEED_SUPER_ADMIN_EMAIL` and `SEED_SUPER_ADMIN_PASSWORD`, and change them before any
+deployment.
 
-| URL                            | What                                        |
-| ------------------------------ | ------------------------------------------- |
-| http://localhost:3100          | Web app (apex)                              |
-| http://acme.localhost:3100     | Tenant portal (resolves once tenants exist) |
-| http://localhost:4000/health   | API health report                           |
-| http://localhost:4000/api/docs | Swagger UI                                  |
-| http://localhost:8000          | CompreFace admin UI                         |
+## Running day to day
+
+```bash
+pnpm docker:up    # once per boot; skip if the containers are already running
+pnpm dev          # builds the shared package, then runs api + web together
+```
+
+`pnpm dev` starts three processes in parallel: `@facecam/shared` in watch mode, the
+NestJS API, and the Next.js app. The shared package is built **first** because the
+other two import its compiled output; without that, an edit to a shared schema would
+silently not reach them.
+
+`Ctrl+C` stops all three. Docker keeps running until `pnpm docker:down`.
+
+To run just one side:
+
+```bash
+pnpm dev:api
+pnpm dev:web
+```
+
+Both still need `@facecam/shared` built at least once (`pnpm build:shared`).
+
+| URL                                 | What                            |
+| ----------------------------------- | ------------------------------- |
+| http://localhost:3100               | Apex: marketing, platform login |
+| http://localhost:3100/admin         | Super admin console             |
+| http://&lt;slug&gt;.localhost:3100  | An organization's portal        |
+| **http://localhost:4000/api/docs**  | **Swagger UI**                  |
+| http://localhost:4000/api/docs-json | OpenAPI spec as JSON            |
+| http://localhost:4000/health        | Dependency health report        |
+| http://localhost:8000               | CompreFace admin UI             |
+
+## API documentation
+
+Swagger UI is at **http://localhost:4000/api/docs**, enabled in every environment
+except production. The spec itself is a complete map of the API, and this service
+handles biometric data, so it is never served in production.
+
+Request schemas are generated from the same Zod schemas that perform validation
+(`src/common/swagger/zod-openapi.ts`), so the documentation cannot drift from the
+rules actually enforced. Field types, formats, enums, length limits and which fields
+are required all come straight from the validator.
+
+### Trying authenticated endpoints
+
+Auth uses httpOnly cookies, so there is no token to copy and paste:
+
+1. Open `POST /api/auth/login`, click **Try it out**.
+2. Send `{"email": "admin@facecam.local", "password": "ChangeMeNow!2026"}`.
+   Omit `tenantSlug` for the platform console; include it to sign in to a portal.
+3. Every subsequent request from the UI carries the cookie automatically.
+
+To sign out, call `POST /api/auth/logout` or clear cookies for `localhost:4000`.
 
 ## Scripts
 
