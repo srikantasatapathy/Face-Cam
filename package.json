@@ -7,7 +7,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "pnpm --parallel --filter \"./apps/*\" dev",
+    "dev": "pnpm --filter @facecam/shared build && pnpm --parallel --filter @facecam/shared --filter \"./apps/*\" dev",
     "dev:api": "pnpm --filter @facecam/api dev",
     "dev:web": "pnpm --filter @facecam/web dev",
     "build": "pnpm --filter \"./packages/*\" build && pnpm --filter \"./apps/*\" build",
@@ -23,7 +23,8 @@
     "docker:down": "docker compose --env-file .env -f docker/docker-compose.yml down",
     "prepare": "husky",
     "docker:logs": "docker compose --env-file .env -f docker/docker-compose.yml logs -f",
-    "docker:ps": "docker compose --env-file .env -f docker/docker-compose.yml ps"
+    "docker:ps": "docker compose --env-file .env -f docker/docker-compose.yml ps",
+    "build:shared": "pnpm --filter @facecam/shared build"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.18.0",
