@@ -10,6 +10,16 @@ import { z } from 'zod'
 
 const durationString = z.string().regex(/^\d+[smhd]$/, 'Must be a duration like 15m, 24h or 7d')
 
+/**
+ * Treats a blank variable as absent.
+ *
+ * `.optional()` alone is not enough: an empty string is present, so a format
+ * check like `.email()` still runs against it and fails. A commented-out or
+ * not-yet-filled line in .env should mean "not set", not "invalid".
+ */
+const optional = <T extends z.ZodTypeAny>(schema: T) =>
+  z.preprocess((value) => (value === '' ? undefined : value), schema.optional())
+
 const base64Key = (bytes: number, name: string) =>
   z.string().refine((value) => {
     try {
@@ -28,6 +38,15 @@ export const envSchema = z
     ROOT_DOMAIN: z.string().min(1).default('localhost:3100'),
 
     DATABASE_URL: z.string().url().startsWith('postgresql://', 'Must be a postgresql:// URL'),
+    /**
+     * Connection used for all tenant data, as a non-owner role so Row Level
+     * Security applies. Optional so an existing dev setup still boots, but
+     * PrismaService refuses to start if it resolves to a privileged role.
+     */
+    APP_DATABASE_URL: optional(
+      z.string().url().startsWith('postgresql://', 'Must be a postgresql:// URL'),
+    ),
+    APP_DATABASE_PASSWORD: optional(z.string()),
 
     JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
     JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be at least 32 characters'),
@@ -41,10 +60,25 @@ export const envSchema = z
     AWS_S3_BUCKET: z.string().optional(),
     AWS_ACCESS_KEY_ID: z.string().optional(),
     AWS_SECRET_ACCESS_KEY: z.string().optional(),
+    /** Set for MinIO or Cloudflare R2. Left empty for AWS itself. */
+    AWS_S3_ENDPOINT: optional(z.string().url()),
     SIGNED_URL_TTL: z.coerce.number().int().positive().default(300),
 
     COMPREFACE_URL: z.string().url().default('http://localhost:8000'),
-    COMPREFACE_ADMIN_API_KEY: z.string().optional(),
+    /**
+     * Admin credentials, not an API key.
+     *
+     * Creating a face collection is an admin-API operation, and CompreFace
+     * gates that behind an OAuth2 password grant. A recognition API key can
+     * only use a collection that already exists, so without these the platform
+     * cannot provision one per tenant and every organization would have to
+     * share a single collection.
+     */
+    COMPREFACE_ADMIN_EMAIL: optional(z.string().email()),
+    COMPREFACE_ADMIN_PASSWORD: optional(z.string()),
+    /** OAuth client used for the password grant. CompreFace ships these fixed. */
+    COMPREFACE_CLIENT_ID: z.string().default('CommonClientId'),
+    COMPREFACE_CLIENT_SECRET: z.string().default('password'),
 
     ANTISPOOF_URL: z.string().url().default('http://localhost:8081'),
     ANTISPOOF_ENABLED: z
@@ -56,7 +90,7 @@ export const envSchema = z
     REDIS_URL: z.string().url().default('redis://localhost:6379'),
 
     MAIL_PROVIDER: z.enum(['resend', 'ses', 'postmark', 'console']).default('console'),
-    MAIL_API_KEY: z.string().optional(),
+    MAIL_API_KEY: optional(z.string()),
     MAIL_FROM: z.string().email().default('no-reply@facecam.local'),
   })
   // The AWS driver needs its credentials present. Checking this here means a
