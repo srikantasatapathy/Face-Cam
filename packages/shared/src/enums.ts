@@ -114,3 +114,10 @@ export const RESERVED_SLUGS: readonly string[] = [
   'staging',
   'dev',
 ]
+
+export const UserStatus = {
+  ACTIVE: 'active',
+  DISABLED: 'disabled',
+  INVITED: 'invited',
+} as const
+export type UserStatus = (typeof UserStatus)[keyof typeof UserStatus]
