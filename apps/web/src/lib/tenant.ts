@@ -21,15 +21,14 @@ export interface TenantProfile {
  * needed to render the login screen correctly branded.
  *
  * `cache` dedupes the call across the layout and any page in the same render.
- *
- * The backing endpoint arrives in Phase 1. Until then every tenant portal
- * correctly 404s, because no tenants exist yet.
  */
 export const getTenantBySlug = cache(async (slug: string): Promise<TenantProfile | null> => {
   try {
     return await api.get<TenantProfile>(`/public/tenants/${encodeURIComponent(slug)}`, {
-      next: { revalidate: 60 },
-    } as never)
+      // Not cached: a suspension or a branding change must show up immediately,
+      // and this is a single indexed lookup by slug.
+      cache: 'no-store',
+    })
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) return null
     throw error
