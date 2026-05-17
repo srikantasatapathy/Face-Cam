@@ -163,16 +163,20 @@ export class FieldDefinitionsService {
   }
 
   async reorder(input: ReorderFieldDefinitionsInput): Promise<FieldDefinitionDto[]> {
-    // Positions are rewritten in one transaction: a partial reorder would leave
-    // the form in an order nobody chose.
-    await this.prisma.$transaction(
-      input.ids.map((id, index) =>
-        this.prisma.db.memberFieldDefinition.update({
-          where: { id },
+    const tenantId = RequestContext.requireTenantId()
+
+    // One transaction: a partial reorder would leave the form in an order
+    // nobody chose. `withTenantTx` sets the RLS session variable once for the
+    // whole batch, so the tenant filter has to be written explicitly here.
+    await this.prisma.withTenantTx(async (tx) => {
+      for (const [index, id] of input.ids.entries()) {
+        await tx.memberFieldDefinition.updateMany({
+          where: { id, tenantId },
           data: { sortOrder: (index + 1) * 10 },
-        }),
-      ),
-    )
+        })
+      }
+    })
+
     return this.list()
   }
 
