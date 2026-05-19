@@ -136,7 +136,10 @@ export class MemberImportService {
 
     const consentVersion = input.consentVersion || CONSENT_VERSION
 
-    await this.prisma.$transaction(async (tx) => {
+    // Routed through the RLS-bound client. Previously this ran as the owner,
+    // which Postgres exempts from row security, so a bug in the tenant id would
+    // have written into another organization unchallenged.
+    await this.prisma.withTenantTx(async (tx) => {
       if (toCreate.length > 0) {
         await tx.member.createMany({ data: toCreate.map((entry) => entry.data) })
       }
