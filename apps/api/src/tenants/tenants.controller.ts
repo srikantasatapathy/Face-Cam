@@ -102,6 +102,20 @@ export class AdminTenantsController {
     return this.tenants.suspend(id, body)
   }
 
+  @Post(':id/provision-face-engine')
+  @Audited('tenant.provisionFaceEngine', 'Tenant')
+  @ApiOperation({
+    summary: 'Create this organization face collection, or confirm it exists',
+    description:
+      'Runs automatically at registration. Exposed as a retry because the first attempt can ' +
+      'fail for reasons unrelated to the tenant, such as CompreFace restarting. Safe to re-run.',
+  })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  async provisionFaceEngine(@Param('id') id: string): Promise<TenantDetail> {
+    await this.tenants.provisionFaceEngine(id)
+    return this.tenants.findById(id)
+  }
+
   @Post(':id/reactivate')
   @Audited('tenant.reactivate', 'Tenant')
   @ApiOperation({ summary: 'Restore full service' })
