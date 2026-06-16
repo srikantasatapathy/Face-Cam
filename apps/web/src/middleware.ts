@@ -44,7 +44,11 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Everything except Next internals and static assets.
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
+    // Everything except Next internals, static assets, and /api.
+    //
+    // /api must be excluded: it is proxied straight to the backend by the
+    // rewrite in next.config.mjs. Rewriting it to /t/<slug>/api first would
+    // send every API call to a route that does not exist.
+    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 }
