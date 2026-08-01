@@ -2,6 +2,7 @@ import 'reflect-metadata'
 import { Logger } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
+import cookieParser from 'cookie-parser'
 import helmet from 'helmet'
 import { AppModule } from './app.module'
 import { AppConfigService } from './config/app-config.service'
@@ -12,6 +13,10 @@ async function bootstrap(): Promise<void> {
   const config = app.get(AppConfigService)
 
   app.setGlobalPrefix('api', { exclude: ['health', 'health/live'] })
+
+  // Auth tokens travel as httpOnly cookies, so they must be parsed before the
+  // global AuthGuard runs.
+  app.use(cookieParser())
 
   app.use(
     helmet({
