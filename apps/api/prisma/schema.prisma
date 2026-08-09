@@ -21,34 +21,34 @@ datasource db {
 // ---------------------------------------------------------------------------
 
 enum TenantTemplate {
-  EDUCATION @map("education")
-  CORPORATE @map("corporate")
+  education
+  corporate
 
   @@map("tenant_template")
 }
 
 enum TenantStatus {
-  TRIAL     @map("trial")
-  ACTIVE    @map("active")
-  PAST_DUE  @map("past_due")
-  SUSPENDED @map("suspended")
-  CANCELLED @map("cancelled")
+  trial
+  active
+  past_due
+  suspended
+  cancelled
 
   @@map("tenant_status")
 }
 
 enum UserRole {
-  SUPER_ADMIN @map("super_admin")
-  ORG_ADMIN   @map("org_admin")
-  OPERATOR    @map("operator")
+  super_admin
+  org_admin
+  operator
 
   @@map("user_role")
 }
 
 enum UserStatus {
-  ACTIVE   @map("active")
-  DISABLED @map("disabled")
-  INVITED  @map("invited")
+  active
+  disabled
+  invited
 
   @@map("user_status")
 }
@@ -63,7 +63,7 @@ model Tenant {
   /// Subdomain label. Frozen after creation: changing it breaks existing portal URLs.
   slug     String         @unique @db.VarChar(40)
   template TenantTemplate
-  status   TenantStatus   @default(TRIAL)
+  status   TenantStatus   @default(trial)
 
   /// Contact for billing reminders. Separate from any admin user's login email.
   billingEmail String? @map("billing_email") @db.VarChar(255)
@@ -159,7 +159,7 @@ model User {
   passwordHash String     @map("password_hash") @db.Text
   fullName     String     @map("full_name") @db.VarChar(200)
   role         UserRole
-  status       UserStatus @default(ACTIVE)
+  status       UserStatus @default(active)
 
   lastLoginAt        DateTime? @map("last_login_at") @db.Timestamptz(6)
   /// Bumping this invalidates every outstanding refresh token for the user.
