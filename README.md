@@ -2,8 +2,9 @@
 
 Multi-tenant face recognition attendance platform for schools, colleges and companies.
 
-- **Specification:** [PROJECT_DESCRIPTION.md](./PROJECT_DESCRIPTION.md)
-- **Task breakdown:** [CHECKLIST.md](./CHECKLIST.md)
+- **Specification (what we're building):** [PROJECT_DESCRIPTION.md](./PROJECT_DESCRIPTION.md)
+- **Task breakdown (what's left):** [CHECKLIST.md](./CHECKLIST.md)
+- **Documentation (what exists today):** [PROJECT_DOCUMENTATION.md](./PROJECT_DOCUMENTATION.md)
 
 ## Stack
 
@@ -46,9 +47,16 @@ pnpm --filter @facecam/shared build
 # 5. Apply migrations
 pnpm db:migrate
 
-# 6. Run both apps
+# 6. Create the first super admin
+pnpm db:seed
+
+# 7. Run both apps
 pnpm dev
 ```
+
+Default seed credentials are `admin@facecam.local` / `ChangeMeNow!2026`.
+Override with `SEED_SUPER_ADMIN_EMAIL` and `SEED_SUPER_ADMIN_PASSWORD`, and
+change them before any deployment.
 
 | URL                            | What                                        |
 | ------------------------------ | ------------------------------------------- |
