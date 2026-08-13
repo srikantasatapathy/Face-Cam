@@ -1,7 +1,12 @@
 # Face-Cam — Multi-Tenant Face Recognition Attendance System
 
 > Status: Phase 0 complete, Phase 1 next. This document is the agreed specification.
-> Companion documents: [CHECKLIST.md](./CHECKLIST.md) for tasks, [README.md](./README.md) for setup.
+> Companion documents: [CHECKLIST.md](./CHECKLIST.md) for tasks,
+> [PROJECT_DOCUMENTATION.md](./PROJECT_DOCUMENTATION.md) for what is actually built,
+> [README.md](./README.md) for setup.
+>
+> This file is the **plan** and may describe things that do not exist yet.
+> For as-built behaviour, read PROJECT_DOCUMENTATION.md.
 
 ---
 
