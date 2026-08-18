@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Theme tokens.
+ *
+ * Three layers, in increasing specificity:
+ *   1. `:root`                  platform defaults
+ *   2. `[data-template="..."]`  per-vertical look (education vs corporate)
+ *   3. inline style on <html>   the tenant's own branding row
+ *
+ * The third layer is emitted by the server layout, so branded pages arrive
+ * already correct with no flash of unbranded content.
+ */
+
+@layer base {
+  :root {
+    /* Brand: overridden per tenant */
+    --brand-primary: 37 99 235;
+    --brand-secondary: 30 64 175;
+    --brand-accent: 245 158 11;
+
+    /* Surfaces and text */
+    --surface: 255 255 255;
+    --surface-raised: 255 255 255;
+    --surface-sunken: 248 250 252;
+    --content: 15 23 42;
+    --content-muted: 100 116 139;
+    --content-inverted: 255 255 255;
+    --line: 226 232 240;
+
+    /* Status colours are platform-owned and never tenant-branded, so that
+       "absent" never renders in a tenant's chosen green. */
+    --success: 22 163 74;
+    --warning: 217 119 6;
+    --danger: 220 38 38;
+
+    --font-sans: system-ui;
+    --radius-card: 0.75rem;
+    --radius-control: 0.5rem;
+  }
+
+  /* Education: brighter, rounder, higher contrast. */
+  [data-template='education'] {
+    --brand-primary: 79 70 229;
+    --brand-secondary: 219 39 119;
+    --brand-accent: 250 204 21;
+    --surface-sunken: 250 245 255;
+    --radius-card: 1.25rem;
+    --radius-control: 0.75rem;
+  }
+
+  /* Corporate: restrained, squarer, neutral. */
+  [data-template='corporate'] {
+    --brand-primary: 30 58 138;
+    --brand-secondary: 51 65 85;
+    --brand-accent: 13 148 136;
+    --surface-sunken: 248 250 252;
+    --radius-card: 0.5rem;
+    --radius-control: 0.375rem;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-surface-sunken text-content font-sans antialiased;
+  }
+
+  /* Kiosk runs unattended on a wall-mounted tablet: no text selection, no
+     long-press callouts, no accidental zoom. */
+  [data-surface='kiosk'] {
+    user-select: none;
+    -webkit-touch-callout: none;
+    touch-action: manipulation;
+  }
+}

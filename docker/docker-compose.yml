@@ -1,0 +1,110 @@
+# Face-Cam supporting services.
+#
+# Postgres is NOT defined here: the team already runs a pgvector instance and
+# the app connects to it via DATABASE_URL. CompreFace runs its own separate
+# Postgres because it manages its own schema and must not share ours.
+#
+# Apple Silicon note: CompreFace publishes amd64-only images and its core
+# service expects AVX. `platform: linux/amd64` runs them under emulation, which
+# works but is slow. Benchmark recognition latency on a real x86 host before
+# drawing any conclusion about throughput from a local Mac run.
+
+name: facecam
+
+volumes:
+  compreface-postgres-data:
+
+services:
+  # --- CompreFace: face detection, recognition and verification -------------
+
+  compreface-postgres-db:
+    image: postgres:13
+    platform: linux/amd64
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: frs
+    volumes:
+      - compreface-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d frs']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  compreface-admin:
+    image: exadel/compreface-admin:1.2.0
+    platform: linux/amd64
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_URL: jdbc:postgresql://compreface-postgres-db:5432/frs
+      SPRING_PROFILES_ACTIVE: dev
+      ENABLE_EMAIL_SERVER: 'false'
+      ADMIN_JAVA_OPTS: -Xmx1g
+    depends_on:
+      compreface-postgres-db:
+        condition: service_healthy
+      compreface-api:
+        condition: service_started
+
+  compreface-api:
+    image: exadel/compreface-api:1.2.0
+    platform: linux/amd64
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_URL: jdbc:postgresql://compreface-postgres-db:5432/frs
+      SPRING_PROFILES_ACTIVE: dev
+      API_JAVA_OPTS: -Xmx4g
+      # Face images are stored by Face-Cam, not by CompreFace. We keep the
+      # single source of truth in our own storage layer so retention and
+      # deletion policies apply everywhere.
+      SAVE_IMAGES_TO_DB: 'false'
+    depends_on:
+      compreface-postgres-db:
+        condition: service_healthy
+
+  compreface-core:
+    image: exadel/compreface-core:1.2.0
+    platform: linux/amd64
+    restart: unless-stopped
+    environment:
+      ML_PORT: 3000
+      IMG_LENGTH_LIMIT: 640
+      UWSGI_PROCESSES: 2
+      UWSGI_THREADS: 1
+
+  compreface-fe:
+    image: exadel/compreface-fe:1.2.0
+    platform: linux/amd64
+    restart: unless-stopped
+    environment:
+      # Substituted into the bundled nginx template. Without it nginx renders
+      # an empty `client_max_body_size` directive and refuses to start.
+      # Enrollment posts several frames at once, so this is not just one image.
+      CLIENT_MAX_BODY_SIZE: 20M
+      PROXY_CONNECT_TIMEOUT: 10s
+      # Generous because recognition under amd64 emulation on Apple Silicon is
+      # slow. Tighten this on real x86 hardware.
+      PROXY_READ_TIMEOUT: 60s
+    ports:
+      - '8000:80'
+    depends_on:
+      - compreface-api
+      - compreface-admin
+
+  # --- Anti-spoofing --------------------------------------------------------
+  # See PROJECT_DESCRIPTION.md section 7. Runs in log-only mode for v1.
+
+  antispoof:
+    build:
+      context: ./antispoof
+    restart: unless-stopped
+    ports:
+      - '8081:8081'
+    environment:
+      PORT: 8081

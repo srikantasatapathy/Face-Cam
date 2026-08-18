@@ -1,0 +1,207 @@
+// Face-Cam database schema
+// See PROJECT_DESCRIPTION.md section 9 for the rationale behind each table.
+//
+// Every tenant-owned table carries `tenantId` and is covered by Row Level
+// Security (see prisma/migrations/*/rls.sql). The application-level tenant
+// filter is the primary control; RLS is the backstop. Both must be present.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector, pgcrypto]
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum TenantTemplate {
+  EDUCATION @map("education")
+  CORPORATE @map("corporate")
+
+  @@map("tenant_template")
+}
+
+enum TenantStatus {
+  TRIAL     @map("trial")
+  ACTIVE    @map("active")
+  PAST_DUE  @map("past_due")
+  SUSPENDED @map("suspended")
+  CANCELLED @map("cancelled")
+
+  @@map("tenant_status")
+}
+
+enum UserRole {
+  SUPER_ADMIN @map("super_admin")
+  ORG_ADMIN   @map("org_admin")
+  OPERATOR    @map("operator")
+
+  @@map("user_role")
+}
+
+enum UserStatus {
+  ACTIVE   @map("active")
+  DISABLED @map("disabled")
+  INVITED  @map("invited")
+
+  @@map("user_status")
+}
+
+// ---------------------------------------------------------------------------
+// Platform
+// ---------------------------------------------------------------------------
+
+model Tenant {
+  id       String         @id @default(uuid()) @db.Uuid
+  name     String         @db.VarChar(200)
+  /// Subdomain label. Frozen after creation: changing it breaks existing portal URLs.
+  slug     String         @unique @db.VarChar(40)
+  template TenantTemplate
+  status   TenantStatus   @default(TRIAL)
+
+  /// Contact for billing reminders. Separate from any admin user's login email.
+  billingEmail String? @map("billing_email") @db.VarChar(255)
+  plan         String? @db.VarChar(50)
+  /// Service is blocked once this passes and the dunning job has run.
+  validUntil   DateTime? @map("valid_until") @db.Timestamptz(6)
+
+  /// IANA timezone. All attendance day boundaries are computed in this zone,
+  /// never in the server's zone.
+  timezone String @default("Asia/Kolkata") @db.VarChar(64)
+
+  /// CompreFace face collection dedicated to this tenant, so one tenant's faces
+  /// are never match candidates for another's.
+  comprefaceAppId     String? @map("compreface_app_id") @db.VarChar(100)
+  comprefaceApiKeyEnc String? @map("compreface_api_key_enc") @db.Text
+
+  suspendedAt     DateTime? @map("suspended_at") @db.Timestamptz(6)
+  suspendedReason String?   @map("suspended_reason") @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  branding  TenantBranding?
+  settings  TenantSettings?
+  users     User[]
+  auditLogs AuditLog[]
+
+  @@index([status])
+  @@index([validUntil])
+  @@map("tenants")
+}
+
+model TenantBranding {
+  tenantId String @id @map("tenant_id") @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  logoUrl        String? @map("logo_url") @db.Text
+  faviconUrl     String? @map("favicon_url") @db.Text
+  loginBgUrl     String? @map("login_bg_url") @db.Text
+  primaryColor   String  @default("#2563eb") @map("primary_color") @db.VarChar(9)
+  secondaryColor String  @default("#1e40af") @map("secondary_color") @db.VarChar(9)
+  accentColor    String  @default("#f59e0b") @map("accent_color") @db.VarChar(9)
+  fontFamily     String? @map("font_family") @db.VarChar(100)
+
+  /// Paid white-label flag. Gates the branding editor, not the storage.
+  customBrandingEnabled Boolean @default(false) @map("custom_branding_enabled")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("tenant_branding")
+}
+
+model TenantSettings {
+  tenantId String @id @map("tenant_id") @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  /// Minimum CompreFace similarity to accept a match. Tunable per tenant because
+  /// camera quality and lighting vary enormously between sites.
+  confidenceThreshold Float @default(0.85) @map("confidence_threshold")
+
+  /// Anti-spoof score above which a scan is rejected. Null means log-only,
+  /// which is the v1 default until real-world data justifies a threshold.
+  rejectSpoofAbove Float? @map("reject_spoof_above")
+
+  /// Ignore repeat scans of the same member inside this window.
+  duplicateCooldownSeconds Int @default(300) @map("duplicate_cooldown_seconds")
+
+  /// Attendance snapshots older than this are deleted nightly. Enrollment
+  /// photos are never touched by this job.
+  snapshotRetentionDays Int @default(30) @map("snapshot_retention_days")
+
+  /// Minutes after shift start before a member is marked late.
+  lateGraceMinutes Int @default(10) @map("late_grace_minutes")
+
+  /// When true, enrollment photos are discarded once the embedding is computed.
+  storeEmbeddingOnly Boolean @default(false) @map("store_embedding_only")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("tenant_settings")
+}
+
+model User {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// Null for super admins, who exist above every tenant.
+  tenantId String? @map("tenant_id") @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  email        String     @db.VarChar(255)
+  passwordHash String     @map("password_hash") @db.Text
+  fullName     String     @map("full_name") @db.VarChar(200)
+  role         UserRole
+  status       UserStatus @default(ACTIVE)
+
+  lastLoginAt        DateTime? @map("last_login_at") @db.Timestamptz(6)
+  /// Bumping this invalidates every outstanding refresh token for the user.
+  tokenVersion       Int       @default(0) @map("token_version")
+  failedLoginCount   Int       @default(0) @map("failed_login_count")
+  lockedUntil        DateTime? @map("locked_until") @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  auditLogs AuditLog[]
+
+  /// Email is unique per tenant, not globally: the same person may administer
+  /// two organizations with one address.
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("users")
+}
+
+model AuditLog {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// Null for platform-level actions taken by a super admin.
+  tenantId String? @map("tenant_id") @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  actorUserId String? @map("actor_user_id") @db.Uuid
+  actor       User?   @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  action   String  @db.VarChar(100)
+  entity   String  @db.VarChar(100)
+  entityId String? @map("entity_id") @db.VarChar(100)
+  metadata Json?   @db.JsonB
+
+  ipAddress String? @map("ip_address") @db.VarChar(45)
+  userAgent String? @map("user_agent") @db.Text
+
+  correlationId String? @map("correlation_id") @db.VarChar(100)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([tenantId, createdAt])
+  @@index([entity, entityId])
+  @@map("audit_logs")
+}
