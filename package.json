@@ -19,9 +19,11 @@
     "db:generate": "pnpm --filter @facecam/api db:generate",
     "db:migrate": "pnpm --filter @facecam/api db:migrate",
     "db:studio": "pnpm --filter @facecam/api db:studio",
-    "docker:up": "docker compose -f docker/docker-compose.yml up -d",
-    "docker:down": "docker compose -f docker/docker-compose.yml down",
-    "prepare": "husky"
+    "docker:up": "docker compose --env-file .env -f docker/docker-compose.yml up -d",
+    "docker:down": "docker compose --env-file .env -f docker/docker-compose.yml down",
+    "prepare": "husky",
+    "docker:logs": "docker compose --env-file .env -f docker/docker-compose.yml logs -f",
+    "docker:ps": "docker compose --env-file .env -f docker/docker-compose.yml ps"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.18.0",

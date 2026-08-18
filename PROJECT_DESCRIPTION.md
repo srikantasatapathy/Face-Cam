@@ -562,3 +562,46 @@ from the repository root.
   `running` is not the same as CompreFace being ready to answer. Use
   `curl http://localhost:4000/health`, which probes each dependency and reports
   them individually.
+
+### CompreFace shows blank thumbnails, and that is expected
+
+`SAVE_IMAGES_TO_DB` is **false**. CompreFace extracts the embedding from an
+uploaded face and discards the image bytes. Its own Subjects screen still
+requests `/api/v1/static/<key>/images/<uuid>`, receives 200 with an empty body,
+and renders a broken-image icon.
+
+This is not a failed upload. It is the deliberate consequence of keeping one
+copy of every face image, in Face-Cam's storage layer, so that the retention
+job, the per-tenant `storeEmbeddingOnly` setting and deletion requests all act
+on the same data. A permanent second copy inside CompreFace's database would
+sit outside all three.
+
+Confirm an enrollment really landed by counting embeddings rather than by
+looking at the UI:
+
+```bash
+docker exec facecam-compreface-postgres-db-1 psql -U postgres -d frs -c \
+  "SELECT s.subject_name, count(*) AS embeddings
+     FROM subject s JOIN embedding e ON e.subject_id = s.id
+    GROUP BY 1 ORDER BY 1;"
+```
+
+A subject with the expected number of embeddings is fully enrolled and will be
+recognised, blank thumbnail or not. A missing or short count means CompreFace
+found no face in that image, which is the real failure to look for.
+
+To turn thumbnails on while developing:
+
+```bash
+# in .env
+COMPREFACE_SAVE_IMAGES=true
+```
+
+```bash
+pnpm docker:up   # recreates compreface-api with the new setting
+```
+
+Existing subjects keep their blank thumbnails, because the bytes for those were
+never stored. Only faces uploaded after the change get previews.
+
+Leave this `false` in production.

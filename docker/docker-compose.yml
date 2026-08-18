@@ -60,10 +60,19 @@ services:
       POSTGRES_URL: jdbc:postgresql://compreface-postgres-db:5432/frs
       SPRING_PROFILES_ACTIVE: dev
       API_JAVA_OPTS: -Xmx4g
-      # Face images are stored by Face-Cam, not by CompreFace. We keep the
-      # single source of truth in our own storage layer so retention and
-      # deletion policies apply everywhere.
-      SAVE_IMAGES_TO_DB: 'false'
+      # Face images are stored by Face-Cam, not by CompreFace, so that the
+      # retention job, the per-tenant `storeEmbeddingOnly` setting and deletion
+      # requests all act on one copy. CompreFace keeps only the embedding.
+      #
+      # The visible cost: CompreFace's own Subjects screen shows blank
+      # thumbnails, because its /api/v1/static/.../images endpoint has nothing
+      # to serve. That is expected, not a failed upload. Check the `embedding`
+      # table to confirm an enrollment actually landed.
+      #
+      # Set COMPREFACE_SAVE_IMAGES=true in .env to turn thumbnails on while
+      # developing. Leave it false in production: it creates a second permanent
+      # copy of every enrollment photo outside our retention controls.
+      SAVE_IMAGES_TO_DB: ${COMPREFACE_SAVE_IMAGES:-false}
     depends_on:
       compreface-postgres-db:
         condition: service_healthy
