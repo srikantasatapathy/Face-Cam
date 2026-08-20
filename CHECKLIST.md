@@ -2,7 +2,7 @@
 
 > Companion to [PROJECT_DESCRIPTION.md](./PROJECT_DESCRIPTION.md).
 > When a phase completes, write its entry in [PROJECT_DOCUMENTATION.md](./PROJECT_DOCUMENTATION.md).
-> Phases 0 and 1 are complete and verified. Phases 2 to 8 are not started.
+> Phases 0, 1 and 2 are complete and verified. Phases 3 to 8 are not started.
 > Legend: **BE** = backend (NestJS) · **FE** = frontend (Next.js) · **INF** = infrastructure
 
 ---
@@ -109,31 +109,54 @@ tracked as a known gap in PROJECT_DOCUMENTATION.md.
 
 ---
 
-## Phase 2 — Members and dynamic fields
+## Phase 2 — Members and dynamic fields ✅ complete
+
+Verified: 35 tests passing (33 e2e, 2 unit), lint and typecheck clean, both
+templates rendering distinct columns and labels from the same code.
 
 ### Backend
 
-- [ ] BE: `members`, `member_field_definitions` schema and migration, GIN index on `attributes`
-- [ ] BE: Template seeder: education and corporate field definitions on tenant creation
-- [ ] BE: Field definition CRUD (add, edit, reorder, toggle required, soft-delete)
-- [ ] BE: Runtime Zod schema generator from field definitions
-- [ ] BE: Member CRUD with dynamic validation against generated schema
-- [ ] BE: Uniqueness constraint on `(tenant_id, code)`
-- [ ] BE: CSV import: upload, column mapping, dry-run validation, row-level error report
-- [ ] BE: CSV export of members
-- [ ] BE: Consent capture fields written on enrollment
-- [ ] BE: Test: changing a field definition does not break existing member records
+- [x] BE: `members`, `member_field_definitions` schema and migration, GIN index on `attributes`
+- [x] BE: pg_trgm indexes so name and code search are index scans, not sequential
+- [x] BE: RLS policies on both new tables, and both registered in `TENANT_SCOPED_MODELS`
+- [x] BE: Guard test that fails the build if a tenant-owned model is left unregistered
+- [x] BE: Template seeder: education and corporate field definitions on tenant creation
+- [x] BE: Backfill for tenants created before seeding existed
+- [x] BE: Field definition CRUD (add, edit, reorder, toggle required, archive, restore)
+- [x] BE: Runtime Zod schema generator from field definitions
+- [x] BE: Member CRUD with dynamic validation against the generated schema
+- [x] BE: Uniqueness constraint on `(tenant_id, code)`
+- [x] BE: CSV import: column mapping, dry-run validation, row-level error report, atomic commit
+- [x] BE: CSV export with a UTF-8 BOM so Excel does not mangle non-ASCII names
+- [x] BE: Consent capture fields written on enrolment
+- [x] BE: Test: changing a field definition does not break existing member records
+- [x] BE: Test: members are tenant scoped and another tenant's member reads as 404
 
 ### Frontend
 
-- [ ] FE: Member list with search, filter by dynamic field, pagination
-- [ ] FE: Dynamic form renderer driven by field definitions (text, number, date, select, phone, email)
-- [ ] FE: Member create / edit / view pages
-- [ ] FE: Field definition manager (drag to reorder, mark required, add custom field)
-- [ ] FE: CSV import wizard with column mapping and an error preview table
-- [ ] FE: Consent notice and checkbox in the enrollment flow
+- [x] FE: Member list with search, dynamic-attribute filter, pagination
+- [x] FE: Dynamic form renderer driven by field definitions (text, number, date, select, phone, email, boolean)
+- [x] FE: Member create / edit / view pages
+- [x] FE: Archive and restore, never hard delete
+- [x] FE: Field definition manager (reorder, toggle required, add, archive, restore)
+- [x] FE: CSV import wizard with auto column matching and an error preview table
+- [x] FE: Consent notice and checkbox in the enrolment flow
+- [x] FE: Portal navigation shell
+- [x] FE: Refresh-token retry in the API client (carried over from Phase 1)
+- [ ] FE: shadcn/ui (carried forward again; hand-rolled primitives still cover the forms)
 
----
+### Notable decisions
+
+- **Fields are archived, never deleted.** Values already stored under the key
+  are kept, so restoring a field brings the data back rather than an empty
+  column. Reusing an archived key is refused.
+- **CSV import is all-or-nothing.** A partial import leaves an organization
+  unable to tell which rows landed, and re-uploading then trips duplicate-code
+  errors on the half that succeeded.
+- **Import never grants biometric consent.** A spreadsheet cannot record that a
+  person agreed to biometric processing.
+- **Key and type are immutable** on a field definition. Renaming would orphan
+  stored values; retyping would invalidate values that were valid when written.
 
 ## Phase 3 — Face engine integration
 
