@@ -92,6 +92,7 @@ model Tenant {
   auditLogs        AuditLog[]
   members          Member[]
   fieldDefinitions MemberFieldDefinition[]
+  faceTemplates    FaceTemplate[]
 
   @@index([status])
   @@index([validUntil])
@@ -259,6 +260,11 @@ model Member {
   consentVersion    String?   @map("consent_version") @db.VarChar(32)
   consentRecordedBy String?   @map("consent_recorded_by") @db.Uuid
 
+  /// Kept after withdrawal as evidence that the request was honoured. The
+  /// consent columns above are cleared; this pair records that it happened.
+  consentWithdrawnAt     DateTime? @map("consent_withdrawn_at") @db.Timestamptz(6)
+  consentWithdrawnReason String?   @map("consent_withdrawn_reason") @db.Text
+
   /// Set once faces are enrolled in Phase 3.
   faceEnrolledAt DateTime? @map("face_enrolled_at") @db.Timestamptz(6)
 
@@ -268,10 +274,53 @@ model Member {
   /// archived rather than removed.
   archivedAt DateTime? @map("archived_at") @db.Timestamptz(6)
 
+  faceTemplates FaceTemplate[]
+
   @@unique([tenantId, code])
   @@index([tenantId, status])
   @@index([tenantId, fullName])
   @@map("members")
+}
+
+/// One enrolled face for a member.
+///
+/// Several rows per member is normal and desirable: enrolling three to five
+/// images at different angles and lighting is what makes recognition work at a
+/// real doorway rather than only in an office.
+///
+/// The embedding is mirrored here as well as living in CompreFace. That is
+/// deliberate: it keeps the face engine replaceable. Without it, moving off
+/// CompreFace would mean re-enrolling every member in every organization.
+model FaceTemplate {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  memberId String @map("member_id") @db.Uuid
+  member   Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  /// Identifier of the corresponding image inside the tenant's CompreFace
+  /// collection, so a deletion here can be mirrored there.
+  comprefaceImageId String? @map("compreface_image_id") @db.VarChar(100)
+  comprefaceSubject String? @map("compreface_subject") @db.VarChar(200)
+
+  /// 512-dimension embedding, the size InsightFace and FaceNet both produce.
+  /// Unsupported by the Prisma client, so it is read and written with raw SQL.
+  embedding Unsupported("vector(512)")?
+
+  /// Key of the enrolment image in our own storage. Null when the tenant has
+  /// `storeEmbeddingOnly` enabled, in which case only the embedding survives.
+  imageRef String? @map("image_ref") @db.Text
+
+  /// Quality signals captured at enrolment, used to explain later failures.
+  detectionScore Float? @map("detection_score")
+  spoofScore     Float? @map("spoof_score")
+
+  enrolledBy String?  @map("enrolled_by") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([tenantId, memberId])
+  @@map("face_templates")
 }
 
 /// Describes one tenant-configurable member field. Seeded from the template at
